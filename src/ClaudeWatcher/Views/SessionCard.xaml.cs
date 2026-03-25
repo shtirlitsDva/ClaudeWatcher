@@ -23,29 +23,33 @@ public partial class SessionCard : UserControl
         {
             newVm.PropertyChanged += OnViewModelPropertyChanged;
             UpdateStatusIndicator(newVm.Status);
+            UpdateSubagentSpinners(newVm.ActiveSubagentCount);
         }
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(SessionCardViewModel.Status) && sender is SessionCardViewModel vm)
-        {
+        if (sender is not SessionCardViewModel vm) return;
+
+        if (e.PropertyName == nameof(SessionCardViewModel.Status))
             Dispatcher.Invoke(() => UpdateStatusIndicator(vm.Status));
-        }
+        else if (e.PropertyName == nameof(SessionCardViewModel.ActiveSubagentCount))
+            Dispatcher.Invoke(() => UpdateSubagentSpinners(vm.ActiveSubagentCount));
     }
 
     private void UpdateStatusIndicator(SessionStatus status)
     {
         // Hide all
         SpinnerPath.Visibility = Visibility.Collapsed;
+        ToolIcon.Visibility = Visibility.Collapsed;
+        PermissionIcon.Visibility = Visibility.Collapsed;
         WaitingDot.Visibility = Visibility.Collapsed;
         ErrorDot.Visibility = Visibility.Collapsed;
         IdleDot.Visibility = Visibility.Collapsed;
 
-        // Stop all animations
-        SpinnerPath.BeginAnimation(null, null);
+        // Stop spinner animation
+        SpinnerRotation.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
         WaitingDot.BeginAnimation(OpacityProperty, null);
-        ErrorDot.BeginAnimation(OpacityProperty, null);
 
         switch (status)
         {
@@ -56,6 +60,14 @@ public partial class SessionCard : UserControl
                     RepeatBehavior = RepeatBehavior.Forever
                 };
                 SpinnerRotation.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, spinAnim);
+                break;
+
+            case SessionStatus.Tool:
+                ToolIcon.Visibility = Visibility.Visible;
+                break;
+
+            case SessionStatus.Permission:
+                PermissionIcon.Visibility = Visibility.Visible;
                 break;
 
             case SessionStatus.Waiting:
@@ -70,17 +82,26 @@ public partial class SessionCard : UserControl
 
             case SessionStatus.Error:
                 ErrorDot.Visibility = Visibility.Visible;
-                var redFlash = new DoubleAnimation(1.0, 0.3, TimeSpan.FromSeconds(0.5))
-                {
-                    AutoReverse = true,
-                    RepeatBehavior = RepeatBehavior.Forever
-                };
-                ErrorDot.BeginAnimation(OpacityProperty, redFlash);
                 break;
 
             case SessionStatus.Idle:
                 IdleDot.Visibility = Visibility.Visible;
                 break;
+        }
+    }
+
+    private void UpdateSubagentSpinners(int count)
+    {
+        if (count > 0)
+        {
+            SubagentSpinners.Visibility = Visibility.Visible;
+            // Create a list of dummy items for the ItemsControl to render spinners
+            SubagentSpinners.ItemsSource = Enumerable.Range(0, count).ToList();
+        }
+        else
+        {
+            SubagentSpinners.Visibility = Visibility.Collapsed;
+            SubagentSpinners.ItemsSource = null;
         }
     }
 

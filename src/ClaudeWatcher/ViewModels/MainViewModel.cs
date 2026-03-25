@@ -15,8 +15,6 @@ public partial class MainViewModel : ObservableObject
     private readonly SessionManager _sessionManager;
     private readonly TerminalFocusService _focusService;
     private readonly RecentSessionsService _recentSessions;
-    private readonly DispatcherTimer _cleanupTimer;
-
     public ObservableCollection<SessionCardViewModel> Sessions { get; } = new();
     public ObservableCollection<RecentSession> RecentSessions => new(_recentSessions.Sessions);
 
@@ -39,11 +37,6 @@ public partial class MainViewModel : ObservableObject
         _sessionManager.SessionAdded += OnSessionAdded;
         _sessionManager.SessionUpdated += OnSessionUpdated;
         _sessionManager.SessionRemoved += OnSessionRemoved;
-
-        // Orphan cleanup every 60 seconds
-        _cleanupTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-        _cleanupTimer.Tick += (_, _) => _sessionManager.CleanupStale();
-        _cleanupTimer.Start();
     }
 
     private void OnSessionAdded(SessionInfo session)

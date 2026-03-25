@@ -46,13 +46,31 @@
                         </Path.RenderTransform>
                     </Path>
 
+                    <!-- Tool: crossed spanner/hammer icon -->
+                    <Path x:Name="ToolIcon"
+                          Data="M 3,1 L 5,5 L 1,9 L 3,11 L 7,7 L 9,9 L 11,7 L 9,5 L 13,1 L 11,1 L 9,3 L 7,1 Z"
+                          Fill="{StaticResource BlueAccentBrush}"
+                          Stretch="Uniform"
+                          Width="12" Height="12"
+                          Visibility="Collapsed" />
+
+                    <!-- Permission: yellow exclamation in rectangle -->
+                    <Grid x:Name="PermissionIcon" Visibility="Collapsed">
+                        <Border Background="{StaticResource YellowAccentBrush}"
+                                CornerRadius="2" Width="12" Height="12" />
+                        <TextBlock Text="!" FontWeight="Bold" FontSize="10"
+                                   Foreground="#1E1E2E"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Margin="0,-1,0,0" />
+                    </Grid>
+
                     <!-- Waiting: flashing yellow dot -->
                     <Ellipse x:Name="WaitingDot"
                              Width="10" Height="10"
                              Fill="{StaticResource YellowAccentBrush}"
                              Visibility="Collapsed" />
 
-                    <!-- Error: flashing red dot -->
+                    <!-- Error: solid red dot -->
                     <Ellipse x:Name="ErrorDot"
                              Width="10" Height="10"
                              Fill="{StaticResource RedAccentBrush}"
@@ -64,6 +82,50 @@
                              Fill="{StaticResource GreenAccentBrush}"
                              Visibility="Collapsed" />
                 </Grid>
+
+                <!-- Subagent spinners -->
+                <ItemsControl x:Name="SubagentSpinners"
+                              DockPanel.Dock="Left"
+                              Margin="0,0,4,0"
+                              VerticalAlignment="Center"
+                              Visibility="Collapsed">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Path Data="M 5,0.5 A 4,4 0 1 1 0.5,5"
+                                  Stroke="{StaticResource BlueAccentBrush}"
+                                  StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Width="10" Height="10"
+                                  Stretch="Uniform"
+                                  Margin="0,0,2,0"
+                                  RenderTransformOrigin="0.5,0.5">
+                                <Path.RenderTransform>
+                                    <RotateTransform x:Name="SubSpinnerRotation" />
+                                </Path.RenderTransform>
+                                <Path.Triggers>
+                                    <EventTrigger RoutedEvent="Loaded">
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="SubSpinnerRotation"
+                                                    Storyboard.TargetProperty="Angle"
+                                                    From="0" To="360"
+                                                    Duration="0:0:1.2"
+                                                    RepeatBehavior="Forever" />
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
+                                </Path.Triggers>
+                            </Path>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
                 <!-- Elapsed time (right) -->
                 <TextBlock DockPanel.Dock="Right"

@@ -88,14 +88,33 @@ public class HookServer : IDisposable
             catch { }
             return Results.Ok();
         });
+
+        app.MapPost("/api/session/subagent", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var payload = await ctx.Request.ReadFromJsonAsync<SubagentPayload>();
+                if (payload != null) _sessionManager.HandleSubagent(payload);
+            }
+            catch { }
+            return Results.Ok();
+        });
     }
 
     public void Dispose()
     {
         if (_app != null)
         {
-            _app.StopAsync().GetAwaiter().GetResult();
-            _app.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            // Must run on thread pool — calling GetResult()/Wait() on the WPF
+            // dispatcher thread deadlocks because StopAsync continuations need
+            // the dispatcher, which is blocked. Task.Run has no sync context,
+            // so awaits resume on the thread pool and can't deadlock.
+            Task.Run(async () =>
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                try { await _app.StopAsync(cts.Token); } catch { }
+                try { await _app.DisposeAsync(); } catch { }
+            }).Wait(TimeSpan.FromSeconds(3));
         }
     }
 }

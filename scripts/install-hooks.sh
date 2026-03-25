@@ -6,7 +6,14 @@ set -e
 
 SETTINGS_FILE="$HOME/.claude/settings.json"
 WATCHER_URL="http://127.0.0.1:22322"
-MARKER="ClaudeWatcher"
+
+# Use deployed hooks directory under %LOCALAPPDATA%\ClaudeWatcher\hooks
+HOOKS_DIR="${LOCALAPPDATA}/ClaudeWatcher/hooks"
+if [ ! -d "$HOOKS_DIR" ]; then
+    echo "ERROR: Hook scripts not found at $HOOKS_DIR"
+    echo "Run Deploy.bat first to build and copy hook scripts."
+    exit 1
+fi
 
 if ! command -v jq &>/dev/null; then
     echo "Error: jq is required. Install from https://jqlang.github.io/jq/download/"
@@ -22,21 +29,18 @@ fi
 # Read current settings
 CURRENT=$(cat "$SETTINGS_FILE")
 
-# Define hook commands — all errors suppressed, always exit 0
-SESSION_START_CMD="bash -c 'input=\$(cat); sid=\$(echo \"\$input\" | jq -r \".session_id // empty\" 2>/dev/null); short=\${sid:0:8}; echo -ne \"\\\\033]0;CW:\${short}\\\\007\" > /dev/tty 2>/dev/null; curl -sf ${WATCHER_URL}/api/health > /dev/null 2>&1 || (start \"\" \"\${LOCALAPPDATA}/ClaudeWatcher/ClaudeWatcher.exe\" 2>/dev/null; sleep 2); curl -sf -X POST ${WATCHER_URL}/api/session/start -H \"Content-Type: application/json\" -d \"\$input\" > /dev/null 2>&1; echo \"{\\\\\"additionalContext\\\\\": \\\\\"${MARKER} is monitoring this session. Focus on your work as normal.\\\\\"}\"; exit 0'"
-
-STOP_CMD="bash -c 'input=\$(cat); curl -sf -X POST ${WATCHER_URL}/api/session/update -H \"Content-Type: application/json\" -d \"\$input\" > /dev/null 2>&1; exit 0'"
-
-NOTIFICATION_CMD="bash -c 'input=\$(cat); curl -sf -X POST ${WATCHER_URL}/api/session/notification -H \"Content-Type: application/json\" -d \"\$input\" > /dev/null 2>&1; exit 0'"
-
-SESSION_END_CMD="bash -c 'input=\$(cat); curl -sf -X POST ${WATCHER_URL}/api/session/end -H \"Content-Type: application/json\" -d \"\$input\" > /dev/null 2>&1; exit 0'"
+# Hook commands — reference deployed script files
+# Timeouts are in SECONDS (Claude hooks API)
+SESSION_START_CMD="bash '$HOOKS_DIR/session-start.sh'"
+STOP_CMD="bash '$HOOKS_DIR/session-update.sh'"
+NOTIFICATION_CMD="bash '$HOOKS_DIR/session-notification.sh'"
+SESSION_END_CMD="bash '$HOOKS_DIR/session-end.sh'"
 
 # Build hook entries as JSON
 build_hook_entry() {
     local cmd="$1"
     local timeout="${2:-5}"
     jq -n --arg cmd "$cmd" --argjson timeout "$timeout" '{
-        matcher: "",
         hooks: [{
             type: "command",
             command: $cmd,
@@ -45,21 +49,25 @@ build_hook_entry() {
     }'
 }
 
-SESSION_START_HOOK=$(build_hook_entry "$SESSION_START_CMD" 10)
+SESSION_START_HOOK=$(build_hook_entry "$SESSION_START_CMD" 30)
 STOP_HOOK=$(build_hook_entry "$STOP_CMD" 5)
 NOTIFICATION_HOOK=$(build_hook_entry "$NOTIFICATION_CMD" 5)
 SESSION_END_HOOK=$(build_hook_entry "$SESSION_END_CMD" 5)
 
 # Remove existing ClaudeWatcher hooks (if any) and add new ones
-# For each event, filter out entries containing the watcher URL, then append new one
 add_hook() {
     local event="$1"
     local new_hook="$2"
     local result
 
     # Get existing hooks for this event, filter out ClaudeWatcher ones
-    result=$(echo "$CURRENT" | jq --arg event "$event" --arg marker "$WATCHER_URL" \
-        '(.hooks[$event] // []) | map(select(.hooks[0].command | tostring | contains($marker) | not))')
+    result=$(echo "$CURRENT" | jq --arg event "$event" --arg marker "$WATCHER_URL" --arg marker2 "ClaudeWatcher" \
+        '(.hooks[$event] // []) | map(select(
+            (.hooks[0].command | tostring) as $cmd |
+            (($cmd | contains($marker)) or ($cmd | contains($marker2)) or
+             ($cmd | contains("session-start.sh")) or ($cmd | contains("session-update.sh")) or
+             ($cmd | contains("session-notification.sh")) or ($cmd | contains("session-end.sh"))) | not
+        ))')
 
     # Append new hook
     result=$(echo "$result" | jq --argjson hook "$new_hook" '. + [$hook]')
@@ -86,4 +94,5 @@ echo "  Stop: updates session status and message"
 echo "  Notification: flags session as needing attention"
 echo "  SessionEnd: removes session card"
 echo ""
-echo "Hooks are in: $SETTINGS_FILE"
+echo "Hook scripts in: $HOOKS_DIR"
+echo "Hooks config in: $SETTINGS_FILE"

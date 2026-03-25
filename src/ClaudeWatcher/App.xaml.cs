@@ -10,6 +10,7 @@ namespace ClaudeWatcher;
 public partial class App : Application
 {
     private Mutex? _mutex;
+    private bool _ownsMutex;
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private MainViewModel? _mainViewModel;
@@ -28,48 +29,81 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Global exception handlers
+        DispatcherUnhandledException += (_, args) =>
+        {
+            Log.Error("Unhandled UI exception", args.Exception);
+            args.Handled = true; // Don't crash
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            Log.Error("Unhandled domain exception", args.ExceptionObject as Exception);
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Log.Error("Unobserved task exception", args.Exception);
+            args.SetObserved();
+        };
+
+        Log.Info($"ClaudeWatcher starting (PID {Environment.ProcessId})");
+
         // Single-instance check
         _mutex = new Mutex(true, "ClaudeWatcher_SingleInstance", out bool createdNew);
+        _ownsMutex = createdNew;
         if (!createdNew)
         {
+            Log.Info("Another instance running, bringing to front");
             BringExistingInstanceToFront();
+            _mutex = null; // Don't touch it in OnExit
             Shutdown();
             return;
         }
 
-        // Initialize services
-        _sessionManager = new SessionManager();
-        var focusService = new TerminalFocusService();
-        var recentSessions = new RecentSessionsService();
-
-        // Start HTTP server
-        _hookServer = new HookServer(_sessionManager);
-        await _hookServer.StartAsync();
-
-        // Create ViewModel
-        _mainViewModel = new MainViewModel(_sessionManager, focusService, recentSessions);
-
-        // Create main window (starts hidden)
-        _mainWindow = new MainWindow
+        try
         {
-            DataContext = _mainViewModel,
-            Visibility = Visibility.Hidden
-        };
+            // Initialize services
+            _sessionManager = new SessionManager();
+            var focusService = new TerminalFocusService();
+            var recentSessions = new RecentSessionsService();
 
-        // Show/hide window when sessions change
-        _mainViewModel.PropertyChanged += (_, args) =>
-        {
-            if (args.PropertyName == nameof(MainViewModel.HasSessions))
+            // Start HTTP server
+            _hookServer = new HookServer(_sessionManager);
+            await _hookServer.StartAsync();
+            Log.Info($"HTTP server started on port {_hookServer.Port}");
+
+            // Create ViewModel
+            _mainViewModel = new MainViewModel(_sessionManager, focusService, recentSessions);
+
+            // Create main window (starts hidden)
+            _mainWindow = new MainWindow
             {
-                if (_mainViewModel.HasSessions)
-                    ShowMainWindow();
-                else
-                    _mainWindow.Visibility = Visibility.Hidden;
-            }
-        };
+                DataContext = _mainViewModel,
+                Visibility = Visibility.Hidden
+            };
 
-        // Setup tray icon
-        SetupTrayIcon();
+            // Show/hide window when sessions change
+            _mainViewModel.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(MainViewModel.HasSessions))
+                {
+                    if (_mainViewModel.HasSessions)
+                        ShowMainWindow();
+                    else
+                        _mainWindow.Visibility = Visibility.Hidden;
+                }
+            };
+
+            // Setup tray icon
+            SetupTrayIcon();
+            Log.Info("Startup complete, waiting for sessions");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Fatal error during startup", ex);
+            MessageBox.Show($"ClaudeWatcher failed to start:\n{ex.Message}\n\nSee log: {Log.FilePath}",
+                "ClaudeWatcher Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown();
+        }
     }
 
     private void SetupTrayIcon()
@@ -182,10 +216,22 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _hookServer?.Dispose();
-        _trayIcon?.Dispose();
-        _mutex?.ReleaseMutex();
-        _mutex?.Dispose();
+        Log.Info("ClaudeWatcher shutting down");
+        try { _hookServer?.Dispose(); } catch (Exception ex) { Log.Error("Error disposing server", ex); }
+        try { _trayIcon?.Dispose(); } catch (Exception ex) { Log.Error("Error disposing tray", ex); }
+        try
+        {
+            if (_ownsMutex && _mutex != null)
+            {
+                _mutex.ReleaseMutex();
+                _mutex.Dispose();
+            }
+        }
+        catch (Exception ex) { Log.Error("Error releasing mutex", ex); }
         base.OnExit(e);
+
+        // Force kill - WPF sometimes hangs after OnExit with hidden windows
+        Log.Info("Exit complete, terminating process");
+        Environment.Exit(0);
     }
 }

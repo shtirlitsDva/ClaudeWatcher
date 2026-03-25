@@ -7,6 +7,17 @@ $ErrorActionPreference = "Stop"
 $settingsFile = Join-Path $env:USERPROFILE ".claude\settings.json"
 $watcherUrl = "http://127.0.0.1:22322"
 
+# Use deployed hooks directory under %LOCALAPPDATA%\ClaudeWatcher\hooks
+$hooksDir = Join-Path $env:LOCALAPPDATA "ClaudeWatcher\hooks"
+if (-not (Test-Path $hooksDir)) {
+    Write-Host "ERROR: Hook scripts not found at $hooksDir" -ForegroundColor Red
+    Write-Host "Run Deploy.bat first to build and copy hook scripts." -ForegroundColor Yellow
+    exit 1
+}
+
+# Convert to forward-slash unix paths for bash
+$hooksDir = $hooksDir -replace '\\','/'
+
 # Create settings file if missing
 $settingsDir = Split-Path $settingsFile
 if (-not (Test-Path $settingsDir)) { New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null }
@@ -20,31 +31,26 @@ if (-not $settings.PSObject.Properties['hooks']) {
     $settings | Add-Member -NotePropertyName 'hooks' -NotePropertyValue ([PSCustomObject]@{})
 }
 
-# Hook commands - all errors suppressed, always exit 0
-$hooks = @{
-    SessionStart = @{
-        command = "bash -c 'input=`$(cat); sid=`$(echo ""`$input"" | grep -o """"""session_id"""":""""""[^""""""]*"""""" 2>/dev/null | head -1 | cut -d"""""" -f4); short=`${sid:0:8}; echo -ne ""\\033]0;CW:`${short}\\007"" > /dev/tty 2>/dev/null; curl -sf $watcherUrl/api/health > /dev/null 2>&1 || (start """" ""%LOCALAPPDATA%/ClaudeWatcher/ClaudeWatcher.exe"" 2>/dev/null; sleep 2); curl -sf -X POST $watcherUrl/api/session/start -H ""Content-Type: application/json"" -d ""`$input"" > /dev/null 2>&1; echo ""{\\""additionalContext\\"": \\""ClaudeWatcher is monitoring this session. Focus on your work as normal.\\""}\""; exit 0'"
-        timeout = 10
-    }
-    Stop = @{
-        command = "bash -c 'input=`$(cat); curl -sf -X POST $watcherUrl/api/session/update -H ""Content-Type: application/json"" -d ""`$input"" > /dev/null 2>&1; exit 0'"
-        timeout = 5
-    }
-    Notification = @{
-        command = "bash -c 'input=`$(cat); curl -sf -X POST $watcherUrl/api/session/notification -H ""Content-Type: application/json"" -d ""`$input"" > /dev/null 2>&1; exit 0'"
-        timeout = 5
-    }
-    SessionEnd = @{
-        command = "bash -c 'input=`$(cat); curl -sf -X POST $watcherUrl/api/session/end -H ""Content-Type: application/json"" -d ""`$input"" > /dev/null 2>&1; exit 0'"
-        timeout = 5
-    }
+# Hook definitions — timeouts are in SECONDS (Claude hooks API)
+# Some hooks need a matcher property (PreToolUse, PermissionRequest, etc.)
+$hooks = [ordered]@{
+    SessionStart = @{ command = "bash '$hooksDir/session-start.sh'"; timeout = 30 }
+    UserPromptSubmit = @{ command = "bash '$hooksDir/session-prompt.sh'"; timeout = 5 }
+    PreToolUse = @{ command = "bash '$hooksDir/session-pretool.sh'"; timeout = 5; matcher = ".*" }
+    PermissionRequest = @{ command = "bash '$hooksDir/session-permission.sh'"; timeout = 5; matcher = ".*" }
+    PostToolUse = @{ command = "bash '$hooksDir/session-posttool.sh'"; timeout = 5; matcher = ".*" }
+    SubagentStart = @{ command = "bash '$hooksDir/session-subagent-start.sh'"; timeout = 5; matcher = ".*" }
+    SubagentStop = @{ command = "bash '$hooksDir/session-subagent-stop.sh'"; timeout = 5; matcher = ".*" }
+    Stop = @{ command = "bash '$hooksDir/session-update.sh'"; timeout = 5 }
+    StopFailure = @{ command = "bash '$hooksDir/session-stopfailure.sh'"; timeout = 5 }
+    Notification = @{ command = "bash '$hooksDir/session-notification.sh'"; timeout = 5 }
+    SessionEnd = @{ command = "bash '$hooksDir/session-end.sh'"; timeout = 5 }
 }
 
 foreach ($eventName in $hooks.Keys) {
     $hookDef = $hooks[$eventName]
 
     $newEntry = [PSCustomObject]@{
-        matcher = ""
         hooks = @(
             [PSCustomObject]@{
                 type = "command"
@@ -53,13 +59,17 @@ foreach ($eventName in $hooks.Keys) {
             }
         )
     }
+    # Add matcher if specified
+    if ($hookDef.ContainsKey('matcher')) {
+        $newEntry | Add-Member -NotePropertyName 'matcher' -NotePropertyValue $hookDef.matcher
+    }
 
     # Get existing entries for this event, filter out ClaudeWatcher ones
     $existing = @()
     if ($settings.hooks.PSObject.Properties[$eventName]) {
         $existing = @($settings.hooks.$eventName | Where-Object {
             $cmd = $_.hooks[0].command
-            $cmd -notlike "*$watcherUrl*"
+            ($cmd -notlike "*$watcherUrl*") -and ($cmd -notlike "*ClaudeWatcher*") -and ($cmd -notlike "*session-*.sh*")
         })
     }
 
@@ -83,4 +93,5 @@ Write-Host "  Stop: updates session status and message"
 Write-Host "  Notification: flags session as needing attention"
 Write-Host "  SessionEnd: removes session card"
 Write-Host ""
-Write-Host "Hooks are in: $settingsFile"
+Write-Host "Hook scripts in: $hooksDir"
+Write-Host "Hooks config in: $settingsFile"

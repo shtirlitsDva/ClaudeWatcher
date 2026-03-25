@@ -16,3 +16,7 @@ public record SessionNotificationPayload(
 public record SessionEndPayload(
     string? session_id, string? hook_event_name,
     string? source, string? timestamp);
+
+public record SubagentPayload(
+    string? session_id, string? hook_event_name,
+    string? agent_id, string? agent_type, string? timestamp);

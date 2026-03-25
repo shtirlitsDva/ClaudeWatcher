@@ -22,7 +22,7 @@ public class SessionManager
             SessionId = payload.session_id,
             WorkingDirectory = payload.cwd ?? "",
             Model = payload.model,
-            Status = SessionStatus.Working,
+            Status = SessionStatus.Idle,
             StartedUtc = DateTime.UtcNow,
             LastUpdatedUtc = DateTime.UtcNow,
             TabTitle = $"CW:{payload.session_id[..Math.Min(8, payload.session_id.Length)]}"
@@ -30,12 +30,14 @@ public class SessionManager
 
         if (_sessions.TryAdd(payload.session_id, session))
         {
+            Log.Info($"Session registered: {payload.session_id} ({payload.cwd})");
             SessionAdded?.Invoke(session);
         }
     }
 
     public void UpdateSession(SessionUpdatePayload payload)
     {
+        Log.Info($"Update received: {payload.hook_event_name} for {payload.session_id?[..Math.Min(8, payload.session_id?.Length ?? 0)]}");
         if (string.IsNullOrEmpty(payload.session_id)) return;
         if (!_sessions.TryGetValue(payload.session_id, out var session))
         {
@@ -61,13 +63,16 @@ public class SessionManager
         if (payload.context_window_size.HasValue && payload.context_window_size.Value > 0)
             session.ContextWindowSize = payload.context_window_size.Value;
 
-        // Status mapping from Stop hook
-        if (payload.hook_event_name == "Stop")
+        session.Status = payload.hook_event_name switch
         {
-            session.Status = payload.stop_hook_active == true
-                ? SessionStatus.Working
-                : SessionStatus.Idle;
-        }
+            "UserPromptSubmit" => SessionStatus.Working,
+            "PreToolUse" => SessionStatus.Tool,
+            "PostToolUse" => SessionStatus.Working,
+            "PermissionRequest" => SessionStatus.Permission,
+            "Stop" => payload.stop_hook_active == true ? SessionStatus.Working : SessionStatus.Idle,
+            "StopFailure" => SessionStatus.Error,
+            _ => session.Status
+        };
 
         SessionUpdated?.Invoke(session);
     }
@@ -81,8 +86,9 @@ public class SessionManager
 
         session.Status = payload.notification_type switch
         {
-            "permission_prompt" or "idle_prompt" or "elicitation_dialog" => SessionStatus.Waiting,
-            _ => SessionStatus.Error
+            "permission_prompt" or "elicitation_dialog" => SessionStatus.Waiting,
+            "idle_prompt" => SessionStatus.Idle,
+            _ => session.Status
         };
 
         if (!string.IsNullOrEmpty(payload.message))
@@ -95,31 +101,33 @@ public class SessionManager
         SessionUpdated?.Invoke(session);
     }
 
+    public void HandleSubagent(SubagentPayload payload)
+    {
+        if (string.IsNullOrEmpty(payload.session_id)) return;
+        if (!_sessions.TryGetValue(payload.session_id, out var session)) return;
+
+        session.LastUpdatedUtc = DateTime.UtcNow;
+
+        if (payload.hook_event_name == "SubagentStart" && !string.IsNullOrEmpty(payload.agent_id))
+        {
+            session.ActiveSubagents.Add(payload.agent_id);
+        }
+        else if (payload.hook_event_name == "SubagentStop" && !string.IsNullOrEmpty(payload.agent_id))
+        {
+            session.ActiveSubagents.Remove(payload.agent_id);
+        }
+        session.ActiveSubagentCount = session.ActiveSubagents.Count;
+
+        SessionUpdated?.Invoke(session);
+    }
+
     public void RemoveSession(string? sessionId)
     {
         if (string.IsNullOrEmpty(sessionId)) return;
         if (_sessions.TryRemove(sessionId, out var session))
         {
+            Log.Info($"Session removed: {sessionId}");
             SessionRemoved?.Invoke(session);
-        }
-    }
-
-    public void CleanupStale()
-    {
-        var now = DateTime.UtcNow;
-        foreach (var kvp in _sessions)
-        {
-            var age = now - kvp.Value.LastUpdatedUtc;
-            if (age > TimeSpan.FromMinutes(30))
-            {
-                RemoveSession(kvp.Key);
-            }
-            else if (age > TimeSpan.FromMinutes(5) && kvp.Value.Status == SessionStatus.Working)
-            {
-                kvp.Value.Status = SessionStatus.Waiting;
-                kvp.Value.LastMessage = "Session may be stalled";
-                SessionUpdated?.Invoke(kvp.Value);
-            }
         }
     }
 }
