@@ -2,8 +2,8 @@
 name: claude-watcher
 status: in-progress
 created: 2026-03-25T17:48:26Z
-updated: 2026-03-25T19:03:53Z
-progress: 0%
+updated: 2026-03-25T19:09:58Z
+progress: 12%
 prd: .claude/prds/claude-watcher.md
 github: https://github.com/shtirlitsDva/ClaudeWatcher/issues/1
 ---
@@ -297,7 +297,7 @@ S = Small (1-2 files), M = Medium (3-5 files), L = Large (5+ files or complex lo
 
 <tasks-created>
 
-- [ ] #2 - WPF skeleton: borderless dark window, drag, single-instance, tray icon (parallel: true)
+- [x] #2 - WPF skeleton: borderless dark window, drag, single-instance, tray icon (parallel: true)
 - [ ] #3 - Embedded Kestrel HTTP server with session endpoints (parallel: true)
 - [ ] #4 - Session card UI: status indicators, context bar, animations (depends: #2)
 - [ ] #5 - Wire HTTP server to SessionManager to ViewModel to Cards (depends: #3, #4)
