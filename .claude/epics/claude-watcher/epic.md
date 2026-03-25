@@ -1,11 +1,11 @@
 ---
 name: claude-watcher
-status: backlog
+status: in-progress
 created: 2026-03-25T17:48:26Z
-updated: 2026-03-25T17:48:26Z
+updated: 2026-03-25T19:03:53Z
 progress: 0%
 prd: .claude/prds/claude-watcher.md
-github:
+github: https://github.com/shtirlitsDva/ClaudeWatcher/issues/1
 ---
 
 # Epic: claude-watcher
@@ -297,28 +297,27 @@ S = Small (1-2 files), M = Medium (3-5 files), L = Large (5+ files or complex lo
 
 <tasks-created>
 
-- [ ] 001.md - WPF skeleton: borderless dark window, drag, single-instance, tray icon (parallel: true)
-- [ ] 002.md - Embedded Kestrel HTTP server with session endpoints (parallel: true)
-- [ ] 003.md - Session card UI: status indicators, context bar, animations (parallel: false, depends: 001)
-- [ ] 004.md - Wire HTTP server to SessionManager to ViewModel to Cards (parallel: false, depends: 002, 003)
-- [ ] 005.md - Hook scripts: install/uninstall, tab title, auto-launch (parallel: false, depends: 002)
-- [ ] 006.md - Terminal tab focus via UI Automation + process tree fallback (parallel: false, depends: 004)
-- [ ] 007.md - Right-click context menu: recent sessions, new session, settings (parallel: false, depends: 004)
-- [ ] 008.md - Settings persistence and Windows startup shortcut (parallel: false, depends: 007)
+- [ ] #2 - WPF skeleton: borderless dark window, drag, single-instance, tray icon (parallel: true)
+- [ ] #3 - Embedded Kestrel HTTP server with session endpoints (parallel: true)
+- [ ] #4 - Session card UI: status indicators, context bar, animations (depends: #2)
+- [ ] #5 - Wire HTTP server to SessionManager to ViewModel to Cards (depends: #3, #4)
+- [ ] #6 - Hook scripts: install/uninstall, tab title, auto-launch (depends: #3)
+- [ ] #7 - Terminal tab focus via UI Automation + process tree fallback (depends: #5)
+- [ ] #8 - Right-click context menu: recent sessions, new session, settings (depends: #5)
+- [ ] #9 - Settings persistence and Windows startup shortcut (depends: #8)
 
 Total tasks: 8
-Parallel tasks: 2 (001, 002 can run simultaneously)
+Parallel tasks: 2 (#2, #3 can run simultaneously)
 Sequential tasks: 6
 Estimated total effort: 37-57 hours
 
 **Dependency graph:**
 ```
-001 ──┐
-      ├──> 003 ──┐
-002 ──┤          ├──> 004 ──┬──> 006
-      │          │          ├──> 007 ──> 008
-      └──> 005   │
-                 │
+#2 ──┐
+     ├──> #4 ──┐
+#3 ──┤         ├──> #5 ──┬──> #7
+     │         │         ├──> #8 ──> #9
+     └──> #6   │
 ```
 
 </tasks-created>
