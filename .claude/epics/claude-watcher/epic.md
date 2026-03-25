@@ -294,3 +294,31 @@ S = Small (1-2 files), M = Medium (3-5 files), L = Large (5+ files or complex lo
 8 tasks, approximately 5-7 days of focused implementation. Tasks 1 and 2 can run in parallel. Task 6 (terminal focus) is the highest-risk item due to undocumented UI Automation tree structure in Windows Terminal — budget extra time for prototyping and testing across WT versions.
 
 </estimated-effort>
+
+<tasks-created>
+
+- [ ] 001.md - WPF skeleton: borderless dark window, drag, single-instance, tray icon (parallel: true)
+- [ ] 002.md - Embedded Kestrel HTTP server with session endpoints (parallel: true)
+- [ ] 003.md - Session card UI: status indicators, context bar, animations (parallel: false, depends: 001)
+- [ ] 004.md - Wire HTTP server to SessionManager to ViewModel to Cards (parallel: false, depends: 002, 003)
+- [ ] 005.md - Hook scripts: install/uninstall, tab title, auto-launch (parallel: false, depends: 002)
+- [ ] 006.md - Terminal tab focus via UI Automation + process tree fallback (parallel: false, depends: 004)
+- [ ] 007.md - Right-click context menu: recent sessions, new session, settings (parallel: false, depends: 004)
+- [ ] 008.md - Settings persistence and Windows startup shortcut (parallel: false, depends: 007)
+
+Total tasks: 8
+Parallel tasks: 2 (001, 002 can run simultaneously)
+Sequential tasks: 6
+Estimated total effort: 37-57 hours
+
+**Dependency graph:**
+```
+001 ──┐
+      ├──> 003 ──┐
+002 ──┤          ├──> 004 ──┬──> 006
+      │          │          ├──> 007 ──> 008
+      └──> 005   │
+                 │
+```
+
+</tasks-created>
