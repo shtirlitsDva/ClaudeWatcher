@@ -8,10 +8,12 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/Theme.xaml" />
+                <ResourceDictionary Source="Resources/Animations.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
             <helpers:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+            <helpers:StringToVisibilityConverter x:Key="StringToVisibility" />
         </ResourceDictionary>
     </Application.Resources>
 

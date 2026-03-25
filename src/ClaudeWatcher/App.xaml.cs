@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using ClaudeWatcher.Services;
 using ClaudeWatcher.ViewModels;
 using H.NotifyIcon;
 
@@ -12,6 +13,8 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private MainViewModel? _mainViewModel;
+    private HookServer? _hookServer;
+    private SessionManager? _sessionManager;
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -21,7 +24,7 @@ public partial class App : Application
 
     private const int SW_RESTORE = 9;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
@@ -34,7 +37,17 @@ public partial class App : Application
             return;
         }
 
-        _mainViewModel = new MainViewModel();
+        // Initialize services
+        _sessionManager = new SessionManager();
+        var focusService = new TerminalFocusService();
+        var recentSessions = new RecentSessionsService();
+
+        // Start HTTP server
+        _hookServer = new HookServer(_sessionManager);
+        await _hookServer.StartAsync();
+
+        // Create ViewModel
+        _mainViewModel = new MainViewModel(_sessionManager, focusService, recentSessions);
 
         // Create main window (starts hidden)
         _mainWindow = new MainWindow
@@ -63,20 +76,16 @@ public partial class App : Application
     {
         _trayIcon = new TaskbarIcon
         {
-            ToolTipText = "ClaudeWatcher",
+            ToolTipText = $"ClaudeWatcher (port {_hookServer?.Port ?? 22322})",
             Visibility = Visibility.Visible
         };
 
-        // Generate a simple icon programmatically
         _trayIcon.Icon = CreateDefaultIcon();
-
-        // Left-click toggles window
         _trayIcon.TrayLeftMouseUp += (_, _) => ToggleMainWindow();
     }
 
     private static System.Drawing.Icon CreateDefaultIcon()
     {
-        // Build a minimal 16x16 32-bit .ico in memory
         const int size = 16;
         var pixels = new byte[size * size * 4];
         int cx = size / 2, cy = size / 2;
@@ -90,7 +99,6 @@ public partial class App : Application
                 int idx = (y * size + x) * 4;
                 if (dist <= r)
                 {
-                    // BGRA: blue circle (#2196F3)
                     pixels[idx + 0] = 0xF3; // B
                     pixels[idx + 1] = 0x96; // G
                     pixels[idx + 2] = 0x21; // R
@@ -99,47 +107,40 @@ public partial class App : Application
             }
         }
 
-        // ICO file format: header + directory entry + BMP info header + pixels
         using var ms = new System.IO.MemoryStream();
         using var bw = new System.IO.BinaryWriter(ms);
 
-        // ICO header
-        bw.Write((short)0);     // reserved
-        bw.Write((short)1);     // type: icon
-        bw.Write((short)1);     // count
+        bw.Write((short)0);
+        bw.Write((short)1);
+        bw.Write((short)1);
 
-        // Directory entry
         int bmpInfoSize = 40;
         int imageSize = bmpInfoSize + pixels.Length;
-        int dataOffset = 6 + 16; // header(6) + one entry(16)
+        int dataOffset = 6 + 16;
 
-        bw.Write((byte)size);   // width
-        bw.Write((byte)size);   // height
-        bw.Write((byte)0);     // color palette
-        bw.Write((byte)0);     // reserved
-        bw.Write((short)1);     // color planes
-        bw.Write((short)32);    // bits per pixel
-        bw.Write(imageSize);    // image data size
-        bw.Write(dataOffset);   // offset to data
+        bw.Write((byte)size);
+        bw.Write((byte)size);
+        bw.Write((byte)0);
+        bw.Write((byte)0);
+        bw.Write((short)1);
+        bw.Write((short)32);
+        bw.Write(imageSize);
+        bw.Write(dataOffset);
 
-        // BITMAPINFOHEADER
-        bw.Write(bmpInfoSize);  // biSize
-        bw.Write(size);         // biWidth
-        bw.Write(size * 2);     // biHeight (doubled for ICO)
-        bw.Write((short)1);     // biPlanes
-        bw.Write((short)32);    // biBitCount
-        bw.Write(0);            // biCompression
-        bw.Write(pixels.Length); // biSizeImage
-        bw.Write(0);            // biXPelsPerMeter
-        bw.Write(0);            // biYPelsPerMeter
-        bw.Write(0);            // biClrUsed
-        bw.Write(0);            // biClrImportant
+        bw.Write(bmpInfoSize);
+        bw.Write(size);
+        bw.Write(size * 2);
+        bw.Write((short)1);
+        bw.Write((short)32);
+        bw.Write(0);
+        bw.Write(pixels.Length);
+        bw.Write(0);
+        bw.Write(0);
+        bw.Write(0);
+        bw.Write(0);
 
-        // Pixel data (bottom-up for BMP)
         for (int y = size - 1; y >= 0; y--)
-        {
             bw.Write(pixels, y * size * 4, size * 4);
-        }
 
         bw.Flush();
         ms.Position = 0;
@@ -149,15 +150,10 @@ public partial class App : Application
     private void ToggleMainWindow()
     {
         if (_mainWindow == null) return;
-
         if (_mainWindow.Visibility == Visibility.Visible)
-        {
             _mainWindow.Visibility = Visibility.Hidden;
-        }
         else
-        {
             ShowMainWindow();
-        }
     }
 
     private void ShowMainWindow()
@@ -186,6 +182,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _hookServer?.Dispose();
         _trayIcon?.Dispose();
         _mutex?.ReleaseMutex();
         _mutex?.Dispose();

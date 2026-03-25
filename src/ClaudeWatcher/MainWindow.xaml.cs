@@ -14,4 +14,19 @@ public partial class MainWindow : Window
     {
         DragMove();
     }
+
+    private void Window_RightClick(object sender, MouseButtonEventArgs e)
+    {
+        // Context menu is handled automatically by the Border.ContextMenu
+    }
+
+    private void MinimizeToTray_Click(object sender, RoutedEventArgs e)
+    {
+        Visibility = Visibility.Hidden;
+    }
+
+    private void Exit_Click(object sender, RoutedEventArgs e)
+    {
+        Application.Current.Shutdown();
+    }
 }
