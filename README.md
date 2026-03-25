@@ -17,7 +17,7 @@ ClaudeWatcher sits in the corner of your screen and shows you what every Claude 
 - **One-click focus** — click a card to bring that exact terminal tab to the foreground, even inside Windows Terminal
 - **Right-click menu** — recent sessions, launch new sessions, minimize to tray, startup settings
 
-All data flows through Claude Code's native hook system. No file polling, no custom protocols.
+All data flows through Claude Code's native hook system.
 
 ## Screenshots
 
