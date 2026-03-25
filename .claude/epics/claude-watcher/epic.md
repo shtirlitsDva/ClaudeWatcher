@@ -1,9 +1,9 @@
 ---
 name: claude-watcher
-status: in-progress
+status: completed
 created: 2026-03-25T17:48:26Z
-updated: 2026-03-25T19:09:58Z
-progress: 12%
+updated: 2026-03-25T19:32:51Z
+progress: 100%
 prd: .claude/prds/claude-watcher.md
 github: https://github.com/shtirlitsDva/ClaudeWatcher/issues/1
 ---
@@ -298,13 +298,13 @@ S = Small (1-2 files), M = Medium (3-5 files), L = Large (5+ files or complex lo
 <tasks-created>
 
 - [x] #2 - WPF skeleton: borderless dark window, drag, single-instance, tray icon (parallel: true)
-- [ ] #3 - Embedded Kestrel HTTP server with session endpoints (parallel: true)
-- [ ] #4 - Session card UI: status indicators, context bar, animations (depends: #2)
-- [ ] #5 - Wire HTTP server to SessionManager to ViewModel to Cards (depends: #3, #4)
-- [ ] #6 - Hook scripts: install/uninstall, tab title, auto-launch (depends: #3)
-- [ ] #7 - Terminal tab focus via UI Automation + process tree fallback (depends: #5)
-- [ ] #8 - Right-click context menu: recent sessions, new session, settings (depends: #5)
-- [ ] #9 - Settings persistence and Windows startup shortcut (depends: #8)
+- [x] #3 - Embedded Kestrel HTTP server with session endpoints (parallel: true)
+- [x] #4 - Session card UI: status indicators, context bar, animations (depends: #2)
+- [x] #5 - Wire HTTP server to SessionManager to ViewModel to Cards (depends: #3, #4)
+- [x] #6 - Hook scripts: install/uninstall, tab title, auto-launch (depends: #3)
+- [x] #7 - Terminal tab focus via UI Automation + process tree fallback (depends: #5)
+- [x] #8 - Right-click context menu: recent sessions, new session, settings (depends: #5)
+- [x] #9 - Settings persistence and Windows startup shortcut (depends: #8)
 
 Total tasks: 8
 Parallel tasks: 2 (#2, #3 can run simultaneously)
