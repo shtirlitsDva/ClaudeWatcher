@@ -6,9 +6,9 @@
     <Border x:Name="CardBorder"
             CornerRadius="6"
             Background="{StaticResource CardBackgroundBrush}"
-            Padding="12"
             Margin="0,0,0,6"
             Cursor="Hand"
+            ClipToBounds="True"
             MouseLeftButtonUp="Card_Click">
         <Border.Style>
             <Style TargetType="Border">
@@ -21,8 +21,12 @@
         </Border.Style>
 
         <Grid>
+            <!-- Context usage background fill -->
+            <Border Background="{Binding ContextBackgroundBrush}" />
+
+            <!-- Content -->
+            <Grid Margin="12">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -166,14 +170,7 @@
                        TextTrimming="CharacterEllipsis"
                        Margin="22,4,0,0" />
 
-            <!-- Row 2: Context usage bar -->
-            <Grid Grid.Row="2" Height="3" Margin="0,8,0,0">
-                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="1.5" />
-                <Border HorizontalAlignment="Left"
-                        CornerRadius="1.5"
-                        Width="{Binding ContextBarWidth}"
-                        Background="{Binding ContextBarBrush}" />
-            </Grid>
+        </Grid>
         </Grid>
     </Border>
 </UserControl>

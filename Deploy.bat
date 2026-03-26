@@ -6,12 +6,8 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-echo Copying hook scripts...
-xcopy /Y /I scripts\hooks\*.sh "%LOCALAPPDATA%\ClaudeWatcher\hooks\" >nul
-if %ERRORLEVEL% NEQ 0 (
-    echo COPY FAILED
-    exit /b 1
-)
+echo Creating hooks junction...
+mklink /J "%LOCALAPPDATA%\ClaudeWatcher\hooks" "%~dp0scripts\hooks"
 
 echo.
 echo Deployed to: %LOCALAPPDATA%\ClaudeWatcher

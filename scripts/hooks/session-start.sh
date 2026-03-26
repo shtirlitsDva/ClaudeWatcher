@@ -15,7 +15,7 @@ echo -ne "\033]0;CW:${short}\007" > /dev/tty 2>/dev/null
 
 # If CW is not running, launch it and wait for it to be ready
 if ! curl -sf --connect-timeout 2 --max-time 3 "$WATCHER_URL/api/health" > /dev/null 2>&1; then
-    start "" "$CW_EXE" 2>/dev/null
+    cmd //c start "" "$CW_EXE" </dev/null >/dev/null 2>&1
     for i in 1 2 3 4 5 6 7 8; do
         sleep 1
         curl -sf --connect-timeout 2 --max-time 3 "$WATCHER_URL/api/health" > /dev/null 2>&1 && break

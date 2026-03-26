@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
 using ClaudeWatcher.Helpers;
@@ -36,10 +37,7 @@ public partial class SessionCardViewModel : ObservableObject
     private string _workingDirectory = string.Empty;
 
     [ObservableProperty]
-    private SolidColorBrush _contextBarBrush = new(Color.FromRgb(0x4C, 0xAF, 0x50));
-
-    [ObservableProperty]
-    private double _contextBarWidth;
+    private Brush _contextBackgroundBrush = Brushes.Transparent;
 
     [ObservableProperty]
     private string? _tabTitle;
@@ -95,14 +93,25 @@ public partial class SessionCardViewModel : ObservableObject
         free = Math.Max(0, Math.Min(100, free));
         ContextFreePercentage = free;
 
-        // Bar shows how much is USED (inverse of free)
-        ContextBarWidth = Math.Max(0, Math.Min(100, 100 - free));
-
-        ContextBarBrush = free switch
+        var color = free switch
         {
-            <= 10 => new SolidColorBrush(Color.FromArgb(0x99, 0xFF, 0x44, 0x44)), // red
-            <= 30 => new SolidColorBrush(Color.FromArgb(0x99, 0xFF, 0xB8, 0x00)), // yellow
-            _ => new SolidColorBrush(Color.FromArgb(0x99, 0x4C, 0xAF, 0x50))      // green
+            <= 10 => Color.FromArgb(0x80, 0xFF, 0x44, 0x44),
+            <= 30 => Color.FromArgb(0x70, 0xFF, 0xB8, 0x00),
+            _ => Color.FromArgb(0x60, 0x4C, 0xAF, 0x50)
+        };
+        var transparent = Color.FromArgb(0, color.R, color.G, color.B);
+        double fraction = Math.Clamp(free / 100.0, 0, 1);
+
+        ContextBackgroundBrush = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0.5),
+            EndPoint = new Point(1, 0.5),
+            GradientStops = new GradientStopCollection
+            {
+                new(color, 0),
+                new(color, Math.Max(0, fraction - 0.15)),
+                new(transparent, fraction)
+            }
         };
     }
 
