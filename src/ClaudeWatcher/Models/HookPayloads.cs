@@ -2,7 +2,8 @@ namespace ClaudeWatcher.Models;
 
 public record SessionStartPayload(
     string? session_id, string? cwd, string? model,
-    string? hook_event_name, string? source, string? timestamp);
+    string? hook_event_name, string? source, string? timestamp,
+    int? shell_pid);
 
 public record SessionUpdatePayload(
     string? session_id, string? cwd, string? hook_event_name,

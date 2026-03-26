@@ -13,6 +13,7 @@ public class SessionInfo
     public DateTime StartedUtc { get; set; } = DateTime.UtcNow;
     public DateTime LastUpdatedUtc { get; set; } = DateTime.UtcNow;
     public string? TabTitle { get; set; }
+    public int ShellPid { get; set; }
     public int ActiveSubagentCount { get; set; }
     public HashSet<string> ActiveSubagents { get; set; } = new();
 }

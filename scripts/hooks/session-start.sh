@@ -8,10 +8,8 @@ CW_EXE="${LOCALAPPDATA}/ClaudeWatcher/ClaudeWatcher.exe"
 
 input=$(cat)
 
-# Extract session_id for terminal title
-sid=$(echo "$input" | grep -o '"session_id":"[^"]*"' 2>/dev/null | head -1 | cut -d'"' -f4)
-short=${sid:0:8}
-echo -ne "\033]0;CW:${short}\007" > /dev/tty 2>/dev/null
+# Inject shell PID so ClaudeWatcher can find the terminal window
+enriched=$(echo "$input" | sed "s/}$/,\"shell_pid\":$PPID}/")
 
 # If CW is not running, launch it and wait for it to be ready
 if ! curl -sf --connect-timeout 2 --max-time 3 "$WATCHER_URL/api/health" > /dev/null 2>&1; then
@@ -25,7 +23,7 @@ fi
 # Register session
 curl -sf --connect-timeout 2 --max-time 3 -X POST "$WATCHER_URL/api/session/start" \
     -H "Content-Type: application/json" \
-    -d "$input" > /dev/null 2>&1
+    -d "$enriched" > /dev/null 2>&1
 
 echo '{"additionalContext": "ClaudeWatcher is monitoring this session."}'
 exit 0

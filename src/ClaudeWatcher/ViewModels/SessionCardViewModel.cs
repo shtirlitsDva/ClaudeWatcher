@@ -43,6 +43,9 @@ public partial class SessionCardViewModel : ObservableObject
     private string? _tabTitle;
 
     [ObservableProperty]
+    private int _shellPid;
+
+    [ObservableProperty]
     private int _activeSubagentCount;
 
     public string DisplayMessage => string.IsNullOrEmpty(Message)
@@ -80,6 +83,7 @@ public partial class SessionCardViewModel : ObservableObject
         }
 
         ActiveSubagentCount = session.ActiveSubagentCount;
+        if (session.ShellPid > 0) ShellPid = session.ShellPid;
         _startedUtc = session.StartedUtc;
         UpdateContextBar(session.ContextUsedPercentage, session.ContextWindowSize);
         UpdateElapsedTime();

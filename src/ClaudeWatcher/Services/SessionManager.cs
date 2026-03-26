@@ -25,7 +25,8 @@ public class SessionManager
             Status = SessionStatus.Idle,
             StartedUtc = DateTime.UtcNow,
             LastUpdatedUtc = DateTime.UtcNow,
-            TabTitle = $"CW:{payload.session_id[..Math.Min(8, payload.session_id.Length)]}"
+            TabTitle = $"CW:{payload.session_id[..Math.Min(8, payload.session_id.Length)]}",
+            ShellPid = payload.shell_pid ?? 0
         };
 
         if (_sessions.TryAdd(payload.session_id, session))
@@ -44,7 +45,7 @@ public class SessionManager
             // Auto-register if we get an update for an unknown session
             RegisterSession(new SessionStartPayload(
                 payload.session_id, payload.cwd, null,
-                payload.hook_event_name, null, payload.timestamp));
+                payload.hook_event_name, null, payload.timestamp, null));
             if (!_sessions.TryGetValue(payload.session_id, out session)) return;
         }
 
