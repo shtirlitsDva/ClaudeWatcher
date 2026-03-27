@@ -76,7 +76,7 @@ public partial class MainViewModel : ObservableObject
 
     private void OnCardClicked(SessionCardViewModel card)
     {
-        _focusService.FocusSession(card.TabTitle, card.ShellPid, card.WorkingDirectory);
+        _focusService.FocusSession(card.WorkingDirectory);
     }
 
     private void OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)

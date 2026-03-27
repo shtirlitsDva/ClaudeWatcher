@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Windows.Automation;
-using ClaudeWatcher.Helpers;
+using System.Text.Json;
 
 namespace ClaudeWatcher.Services;
 
@@ -25,173 +25,164 @@ public class TerminalFocusService
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
     private const int SW_RESTORE = 9;
 
-    public bool FocusSession(string? tabTitle, int shellPid = 0, string? cwd = null)
+    private static readonly string WezTermExe = FindWezTerm();
+
+    private static string FindWezTerm()
     {
-        Log.Info($"FocusSession: tabTitle='{tabTitle}', shellPid={shellPid}, cwd='{cwd}'");
+        var progFiles = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "WezTerm", "wezterm.exe");
+        return File.Exists(progFiles) ? progFiles : "wezterm";
+    }
 
-        // Primary: process tree — walk up from shell PID to find the terminal window
-        if (shellPid > 0 && TryFocusViaProcessTree(shellPid, cwd))
+    public bool FocusSession(string? cwd)
+    {
+        Log.Info($"FocusSession: cwd='{cwd}'");
+
+        if (string.IsNullOrEmpty(cwd))
+            return false;
+
+        if (TryFocusWezTermPane(cwd))
             return true;
 
-        // Fallback: UIA scan of all WT windows, match by title or CWD
-        if (TryFocusWindowsTerminalTab(tabTitle, cwd))
-            return true;
-
-        Log.Info("Focus failed: no match via process tree or UIA");
+        Log.Info("Focus failed: no matching WezTerm pane");
         return false;
     }
 
-    private bool TryFocusViaProcessTree(int shellPid, string? cwd)
+    private bool TryFocusWezTermPane(string cwd)
     {
         try
         {
-            IntPtr hwnd = ProcessTreeHelper.FindTerminalWindowHandle(shellPid);
-            if (hwnd == IntPtr.Zero)
+            // Query WezTerm for all panes
+            var json = RunProcess(WezTermExe, "cli list --format json");
+            if (string.IsNullOrEmpty(json))
             {
-                Log.Info($"Process tree from PID {shellPid}: no terminal window found");
+                Log.Info("wezterm cli list returned empty");
                 return false;
             }
 
-            Log.Info($"Process tree from PID {shellPid}: found window {hwnd}");
-            ForceForeground(hwnd);
+            var panes = JsonSerializer.Deserialize<JsonElement>(json);
+            if (panes.ValueKind != JsonValueKind.Array)
+            {
+                Log.Info($"Unexpected JSON kind: {panes.ValueKind}");
+                return false;
+            }
 
-            // If the window has multiple tabs, try to select the right one
-            TrySelectTab(hwnd, cwd);
+            // Normalize the target CWD for comparison
+            string targetCwd = NormalizePath(cwd);
+            Log.Info($"Looking for CWD: {targetCwd} among {panes.GetArrayLength()} pane(s)");
+
+            int matchedPaneId = -1;
+            foreach (var pane in panes.EnumerateArray())
+            {
+                var paneCwd = pane.TryGetProperty("cwd", out var cwdProp) ? cwdProp.GetString() ?? "" : "";
+                var paneId = pane.TryGetProperty("pane_id", out var idProp) ? idProp.GetInt32() : -1;
+                var paneTitle = pane.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? "" : "";
+
+                string normalizedPaneCwd = NormalizePath(paneCwd);
+                Log.Info($"  Pane {paneId}: cwd='{normalizedPaneCwd}' title='{paneTitle}'");
+
+                if (paneId >= 0 && string.Equals(targetCwd, normalizedPaneCwd, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedPaneId = paneId;
+                    Log.Info($"  -> CWD match! pane_id={paneId}");
+                    break;
+                }
+            }
+
+            if (matchedPaneId < 0)
+            {
+                Log.Info("No pane matched by CWD");
+                return false;
+            }
+
+            // Bring WezTerm window to foreground
+            BringWezTermToFront();
+
+            // Activate the matched pane
+            RunProcess(WezTermExe, $"cli activate-pane --pane-id {matchedPaneId}");
+            Log.Info($"Activated pane {matchedPaneId}");
             return true;
         }
         catch (Exception ex)
         {
-            Log.Error($"Process tree focus failed for PID {shellPid}", ex);
+            Log.Error("WezTerm pane focus failed", ex);
             return false;
         }
     }
 
-    private void TrySelectTab(IntPtr hwnd, string? cwd)
+    private static string NormalizePath(string path)
+    {
+        // Handle file:// URIs that WezTerm may return
+        if (path.StartsWith("file:///", StringComparison.OrdinalIgnoreCase))
+            path = path[8..]; // strip "file:///"
+        else if (path.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            path = path[7..];
+
+        // URL-decode %20 etc.
+        path = Uri.UnescapeDataString(path);
+
+        // Normalize separators and trim trailing slashes
+        return path.Replace('/', '\\').TrimEnd('\\');
+    }
+
+    private void BringWezTermToFront()
     {
         try
         {
-            var window = AutomationElement.FromHandle(hwnd);
-            var tabs = window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
-
-            if (tabs.Count <= 1)
+            foreach (var proc in Process.GetProcessesByName("wezterm-gui"))
             {
-                Log.Info($"Window has {tabs.Count} tab(s), no selection needed");
-                return;
-            }
-
-            Log.Info($"Window has {tabs.Count} tabs, attempting match by CWD");
-
-            string dirName = "";
-            if (!string.IsNullOrEmpty(cwd))
-                dirName = Path.GetFileName(cwd.TrimEnd('\\', '/')) ?? "";
-
-            if (string.IsNullOrEmpty(dirName)) return;
-
-            foreach (AutomationElement tab in tabs)
-            {
-                try
+                if (proc.MainWindowHandle != IntPtr.Zero)
                 {
-                    string tabName = tab.Current.Name ?? "";
-                    if (tabName.Contains(dirName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        ActivateTab(tab);
-                        Log.Info($"Selected tab '{tabName}' matching CWD component '{dirName}'");
-                        return;
-                    }
+                    ForceForeground(proc.MainWindowHandle);
+                    Log.Info($"Brought wezterm-gui window to front (PID {proc.Id})");
+                    return;
                 }
-                catch { }
             }
-
-            Log.Info($"No tab matched CWD '{dirName}', window is focused but tab not selected");
+            Log.Info("No wezterm-gui process with window found");
         }
         catch (Exception ex)
         {
-            Log.Error("Tab selection within window failed", ex);
+            Log.Error("BringWezTermToFront failed", ex);
         }
     }
 
-    private bool TryFocusWindowsTerminalTab(string? tabTitle, string? cwd)
+    private static string RunProcess(string fileName, string arguments)
     {
         try
         {
-            var desktop = AutomationElement.RootElement;
-            var wtWindows = desktop.FindAll(TreeScope.Children,
-                new PropertyCondition(AutomationElement.ClassNameProperty,
-                    "CASCADIA_HOSTING_WINDOW_CLASS"));
-
-            Log.Info($"UIA fallback: {wtWindows.Count} WT window(s)");
-
-            // Build search terms
-            string dirName = "";
-            if (!string.IsNullOrEmpty(cwd))
-                dirName = Path.GetFileName(cwd.TrimEnd('\\', '/')) ?? "";
-
-            foreach (AutomationElement wtWin in wtWindows)
+            using var proc = new Process
             {
-                var tabs = wtWin.FindAll(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
-
-                foreach (AutomationElement tab in tabs)
+                StartInfo = new ProcessStartInfo
                 {
-                    try
-                    {
-                        string tabName = tab.Current.Name ?? "";
-
-                        // Match by explicit title
-                        if (!string.IsNullOrEmpty(tabTitle) &&
-                            tabName.Contains(tabTitle, StringComparison.OrdinalIgnoreCase))
-                        {
-                            ActivateTab(tab);
-                            ForceForeground(GetWindowHandle(wtWin));
-                            Log.Info($"UIA matched '{tabName}' by title '{tabTitle}'");
-                            return true;
-                        }
-
-                        // Match by CWD directory name
-                        if (!string.IsNullOrEmpty(dirName) &&
-                            tabName.Contains(dirName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            ActivateTab(tab);
-                            ForceForeground(GetWindowHandle(wtWin));
-                            Log.Info($"UIA matched '{tabName}' by CWD '{dirName}'");
-                            return true;
-                        }
-                    }
-                    catch { }
+                    FileName = fileName,
+                    Arguments = arguments,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
                 }
-            }
-
-            Log.Info("UIA fallback: no matching tab found");
+            };
+            proc.Start();
+            string output = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit(3000);
+            return output;
         }
         catch (Exception ex)
         {
-            Log.Error("UIA tab scan failed", ex);
+            Log.Error($"RunProcess '{fileName} {arguments}' failed", ex);
+            return "";
         }
-
-        return false;
-    }
-
-    private static void ActivateTab(AutomationElement tab)
-    {
-        if (tab.TryGetCurrentPattern(SelectionItemPattern.Pattern, out object? selPat))
-            ((SelectionItemPattern)selPat).Select();
-        else if (tab.TryGetCurrentPattern(InvokePattern.Pattern, out object? invPat))
-            ((InvokePattern)invPat).Invoke();
-    }
-
-    private static IntPtr GetWindowHandle(AutomationElement element)
-    {
-        return new IntPtr(
-            (int)element.GetCurrentPropertyValue(
-                AutomationElement.NativeWindowHandleProperty));
     }
 
     private void ForceForeground(IntPtr hwnd)
     {
-        ShowWindow(hwnd, SW_RESTORE);
+        if (IsIconic(hwnd))
+            ShowWindow(hwnd, SW_RESTORE);
 
         uint foreThread = GetWindowThreadProcessId(GetForegroundWindow(), out _);
         uint appThread = GetCurrentThreadId();

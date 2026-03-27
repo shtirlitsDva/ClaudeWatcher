@@ -2,7 +2,6 @@
 # ClaudeWatcher hook uninstaller (PowerShell)
 
 $settingsFile = Join-Path $env:USERPROFILE ".claude\settings.json"
-$watcherUrl = "http://127.0.0.1:22322"
 
 if (-not (Test-Path $settingsFile)) {
     Write-Host "No settings file found at $settingsFile"
@@ -16,16 +15,20 @@ if (-not $settings.PSObject.Properties['hooks']) {
     exit 0
 }
 
-foreach ($eventName in @('SessionStart', 'Stop', 'Notification', 'SessionEnd')) {
-    if ($settings.hooks.PSObject.Properties[$eventName]) {
-        $filtered = @($settings.hooks.$eventName | Where-Object {
-            $_.hooks[0].command -notlike "*$watcherUrl*"
-        })
-        if ($filtered.Count -eq 0) {
-            $settings.hooks.PSObject.Properties.Remove($eventName)
-        } else {
-            $settings.hooks.$eventName = $filtered
-        }
+# Process ALL hook event names — filter out any entry whose command contains "ClaudeWatcher"
+foreach ($eventName in @($settings.hooks.PSObject.Properties.Name)) {
+    $entries = $settings.hooks.$eventName
+    if ($null -eq $entries) { continue }
+
+    $filtered = @($entries | Where-Object {
+        $cmd = $_.hooks[0].command
+        $cmd -notlike "*ClaudeWatcher*"
+    })
+
+    if ($filtered.Count -eq 0) {
+        $settings.hooks.PSObject.Properties.Remove($eventName)
+    } else {
+        $settings.hooks.$eventName = $filtered
     }
 }
 

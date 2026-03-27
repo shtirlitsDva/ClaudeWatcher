@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace ClaudeWatcher.Helpers;
 
@@ -20,6 +21,8 @@ public static class ProcessTreeHelper
         public string szExeFile;
     }
 
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
 
@@ -31,6 +34,18 @@ public static class ProcessTreeHelper
 
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
     private const uint TH32CS_SNAPPROCESS = 0x00000002;
 
@@ -58,24 +73,44 @@ public static class ProcessTreeHelper
         }
     }
 
+    /// <summary>
+    /// Finds the Windows Terminal window (CASCADIA_HOSTING_WINDOW_CLASS) that owns the
+    /// given shell process by checking if any visible WT window's process is an ancestor.
+    /// </summary>
     public static IntPtr FindTerminalWindowHandle(int shellPid)
     {
+        // Collect ancestor process IDs (walk up max 10 levels)
+        var ancestors = new HashSet<int>();
         int pid = shellPid;
-        for (int i = 0; i < 5; i++) // Walk up max 5 levels
+        for (int i = 0; i < 10; i++)
         {
-            int parentPid = GetParentProcessId(pid);
-            if (parentPid <= 0) break;
-
-            try
-            {
-                var proc = System.Diagnostics.Process.GetProcessById(parentPid);
-                if (proc.MainWindowHandle != IntPtr.Zero)
-                    return proc.MainWindowHandle;
-            }
-            catch { }
-
-            pid = parentPid;
+            int parent = GetParentProcessId(pid);
+            if (parent <= 0) break;
+            ancestors.Add(parent);
+            pid = parent;
         }
-        return IntPtr.Zero;
+
+        if (ancestors.Count == 0) return IntPtr.Zero;
+
+        // Find a visible CASCADIA_HOSTING_WINDOW_CLASS window owned by an ancestor process
+        IntPtr result = IntPtr.Zero;
+        EnumWindows((hwnd, _) =>
+        {
+            if (!IsWindowVisible(hwnd)) return true;
+
+            var sb = new StringBuilder(256);
+            GetClassName(hwnd, sb, sb.Capacity);
+            if (sb.ToString() != "CASCADIA_HOSTING_WINDOW_CLASS") return true;
+
+            GetWindowThreadProcessId(hwnd, out uint winPid);
+            if (ancestors.Contains((int)winPid))
+            {
+                result = hwnd;
+                return false; // stop enumerating
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        return result;
     }
 }
